@@ -1,15 +1,12 @@
-import os
+from supabase import Client, create_client
 
-from dotenv import load_dotenv
-from supabase import create_client, Client
+from app.config import get_settings
 
-load_dotenv()
 
-if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_KEY"):
-    raise RuntimeError("SUPABASE_URL or SUPABASE_KEY is not set")
+def create_supabase_client() -> Client:
+    settings = get_settings()
+    return create_client(settings.supabase_url, settings.supabase_key)
 
-supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
-    )
 
-print("Supabase client initialized successfully")
+# Service-role client for tables, RPCs, and admin only. Never sign_in or get_user on it.
+supabase: Client = create_supabase_client()
