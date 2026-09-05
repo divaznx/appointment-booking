@@ -2,9 +2,10 @@ from fastapi import FastAPI, HTTPException
 
 from app.supabase_client import supabase
 from app.schemas.appointment import AppointmentCreate, AppointmentCancel
-from app.schemas.auth import SignUpRequest
+from app.schemas.auth import SignUpRequest, LoginRequest
 #from supabase.exceptions import APIError
 from postgrest.exceptions import APIError
+from supabase_auth.errors import AuthApiError
 from uuid import UUID
 
 
@@ -208,4 +209,28 @@ async def signup(request: SignUpRequest):
         raise HTTPException(
             status_code=400,
             detail=e.message,
+        )
+
+
+@app.post("/login")
+async def login(request: LoginRequest):
+    try:
+        response = supabase.auth.sign_in_with_password(
+            {
+                "email": request.email,
+                "password": request.password,
+            }
+        )
+
+        return {
+            "message": "Login successful",
+            "access_token": response.session.access_token,
+            "refresh_token": response.session.refresh_token,
+            "user_id": response.user.id,
+        }
+
+    except AuthApiError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
         )
