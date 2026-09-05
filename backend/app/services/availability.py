@@ -1,12 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from app.supabase_client import supabase
-
-_CACHE_TS: float | None = None
-_CACHE_TTL_SECONDS = 15
-_STORE: dict[tuple, list] = {}
-
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -39,7 +33,14 @@ def is_bookable(slot: dict[str, Any], now: datetime | None = None) -> bool:
     return slot.get("status") in ("available", "held")
 
 
+_CACHE_TS: float | None = None
+_CACHE_TTL_SECONDS = 15
+_STORE: dict[tuple, list] = {}
+
+
 def list_available_slots(tenant_id: str | None = None, location_id: str | None = None):
+    from app.supabase_client import supabase
+
     query = supabase.table("slots").select("*")
     if tenant_id:
         query = query.eq("tenant_id", tenant_id)
