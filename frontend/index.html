@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Appointments</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="top">
+        <div>
+          <h1>Appointments</h1>
+          <p class="muted">Book an available slot</p>
+        </div>
+        <div id="session" class="session hidden">
+          <span id="greeting"></span>
+          <button type="button" id="logout">Log out</button>
+        </div>
+      </header>
+
+      <p id="banner" class="banner hidden" role="status"></p>
+
+      <section id="auth" class="card">
+        <h2>Sign in</h2>
+        <form id="auth-form">
+          <label>
+            Email
+            <input id="email" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            Password
+            <input
+              id="password"
+              type="password"
+              autocomplete="current-password"
+              minlength="8"
+              required
+            />
+          </label>
+          <div class="actions">
+            <button type="submit" id="login">Log in</button>
+            <button type="button" id="signup" class="secondary">Sign up</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="app" class="hidden">
+        <div class="grid">
+          <article class="card">
+            <div class="card-head">
+              <h2>Available slots</h2>
+              <button type="button" id="refresh-slots" class="secondary">Refresh</button>
+            </div>
+            <div id="slots" class="list"></div>
+          </article>
+          <article class="card">
+            <div class="card-head">
+              <h2>My appointments</h2>
+              <button type="button" id="refresh-appts" class="secondary">Refresh</button>
+            </div>
+            <div id="appointments" class="list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
