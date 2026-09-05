@@ -208,40 +208,52 @@ BEGIN
         SET held_until = NULL, held_by = NULL,
             status = CASE WHEN status = 'held' THEN 'available' ELSE status END
         WHERE id = p_slot_id;
-        SELECT * INTO v_slot FROM public.slots WHERE id = p_slot_id;
+        SELECT * INTO v_slot FROM public.slots WHERE id = p_slot_id FOR UPDATE;
     END IF;
 
     IF v_slot.status = 'held' AND v_slot.held_by IS DISTINCT FROM p_user_id THEN
         RAISE EXCEPTION 'Slot is not available' USING ERRCODE = 'P0001';
     END IF;
 
-    IF COALESCE(v_slot.booking_model, 'single') = 'capacity' THEN
-        SELECT count(*) INTO v_booked
-        FROM public.appointments
-        WHERE slot_id = p_slot_id AND status IN ('held', 'booked');
-        IF v_booked >= COALESCE(v_slot.capacity, 1) THEN
-            RAISE EXCEPTION 'Slot is not available' USING ERRCODE = 'P0001';
+    BEGIN
+        IF COALESCE(v_slot.booking_model, 'single') = 'capacity' THEN
+            SELECT count(*) INTO v_booked
+            FROM public.appointments
+            WHERE slot_id = p_slot_id AND status IN ('held', 'booked');
+            IF v_booked >= COALESCE(v_slot.capacity, 1) THEN
+                RAISE EXCEPTION 'Slot is not available' USING ERRCODE = 'P0001';
+            END IF;
+            INSERT INTO public.appointments (slot_id, user_id, status, idempotency_key, tenant_id, location_id)
+            VALUES (p_slot_id, p_user_id, 'booked', p_idempotency_key, v_slot.tenant_id, v_slot.location_id)
+            RETURNING * INTO v_appt;
+            UPDATE public.slots
+            SET booked_count = v_booked + 1,
+                status = CASE WHEN v_booked + 1 >= COALESCE(capacity, 1) THEN 'booked' ELSE 'available' END,
+                held_until = NULL,
+                held_by = NULL
+            WHERE id = p_slot_id;
+        ELSE
+            IF v_slot.status NOT IN ('available', 'held') THEN
+                RAISE EXCEPTION 'Slot is not available' USING ERRCODE = 'P0001';
+            END IF;
+            INSERT INTO public.appointments (slot_id, user_id, status, idempotency_key, tenant_id, location_id)
+            VALUES (p_slot_id, p_user_id, 'booked', p_idempotency_key, v_slot.tenant_id, v_slot.location_id)
+            RETURNING * INTO v_appt;
+            UPDATE public.slots
+            SET status = 'booked', held_until = NULL, held_by = NULL, booked_count = 1
+            WHERE id = p_slot_id;
         END IF;
-        INSERT INTO public.appointments (slot_id, user_id, status, idempotency_key, tenant_id, location_id)
-        VALUES (p_slot_id, p_user_id, 'booked', p_idempotency_key, v_slot.tenant_id, v_slot.location_id)
-        RETURNING * INTO v_appt;
-        UPDATE public.slots
-        SET booked_count = v_booked + 1,
-            status = CASE WHEN v_booked + 1 >= COALESCE(capacity, 1) THEN 'booked' ELSE 'available' END,
-            held_until = NULL,
-            held_by = NULL
-        WHERE id = p_slot_id;
-    ELSE
-        IF v_slot.status NOT IN ('available', 'held') THEN
-            RAISE EXCEPTION 'Slot is not available' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN unique_violation THEN
+        IF p_idempotency_key IS NOT NULL THEN
+            SELECT * INTO v_appt
+            FROM public.appointments
+            WHERE idempotency_key = p_idempotency_key;
+            IF FOUND THEN
+                RETURN to_jsonb(v_appt);
+            END IF;
         END IF;
-        INSERT INTO public.appointments (slot_id, user_id, status, idempotency_key, tenant_id, location_id)
-        VALUES (p_slot_id, p_user_id, 'booked', p_idempotency_key, v_slot.tenant_id, v_slot.location_id)
-        RETURNING * INTO v_appt;
-        UPDATE public.slots
-        SET status = 'booked', held_until = NULL, held_by = NULL, booked_count = 1
-        WHERE id = p_slot_id;
-    END IF;
+        RAISE EXCEPTION 'Slot is not available' USING ERRCODE = 'P0001';
+    END;
 
     INSERT INTO public.outbox_jobs (job_type, payload)
     VALUES (
