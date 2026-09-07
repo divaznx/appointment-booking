@@ -3,19 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Appointments</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260907_02" />
   </head>
   <body>
     <main class="page">
       <header class="top">
         <div>
           <h1>Appointments</h1>
-          <p class="muted">Book an available slot</p>
+          <p class="muted">Book an available appointment slot</p>
         </div>
         <div id="session" class="session hidden">
           <span id="greeting"></span>
-          <button type="button" id="logout">Log out</button>
+          <button type="button" id="logout" class="secondary">Log out</button>
         </div>
       </header>
 
@@ -26,7 +29,7 @@
         <form id="auth-form">
           <label>
             Email
-            <input id="email" type="email" autocomplete="username" required />
+            <input id="email" type="email" autocomplete="username" placeholder="you@example.com" required />
           </label>
           <label>
             Password
@@ -35,6 +38,7 @@
               type="password"
               autocomplete="current-password"
               minlength="8"
+              placeholder="••••••••"
               required
             />
           </label>
@@ -52,7 +56,12 @@
               <h2>Available slots</h2>
               <button type="button" id="refresh-slots" class="secondary">Refresh</button>
             </div>
-            <div id="slots" class="list"></div>
+            <!-- Modern Calendar Widget -->
+            <div id="calendar"></div>
+            <!-- Slots for Selected Date -->
+            <div id="slots-container">
+              <div id="slots" class="list"></div>
+            </div>
           </article>
           <article class="card">
             <div class="card-head">
@@ -64,6 +73,6 @@
         </div>
       </section>
     </main>
-    <script src="./app.js"></script>
+    <script src="./app.js?v=20260907_02"></script>
   </body>
 </html>

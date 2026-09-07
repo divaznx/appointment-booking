@@ -1,0 +1,25 @@
+name: backend-tests
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "requirements.txt"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "requirements.txt"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r ../requirements.txt
+      - run: pytest tests/test_availability.py tests/test_state_machine.py tests/test_webhooks.py tests/test_errors.py -q
