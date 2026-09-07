@@ -1,5 +1,7 @@
 const TOKEN_KEY = "access_token";
-const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:8000";
+const API_BASE =
+  localStorage.getItem("apiBase") ||
+  (window.location.port === "3000" ? "http://127.0.0.1:8000" : window.location.origin);
 
 const els = {
   banner: document.getElementById("banner"),
