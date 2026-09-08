@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import get_settings
 from app.dependencies import Principal, get_current_user
-from app.schemas.auth import LoginRequest, SignUpRequest
+from app.schemas.auth import ForgotPasswordRequest, LoginRequest, ResetPasswordRequest, SignUpRequest
 from app.services.audit import write_audit
 from app.supabase_client import create_supabase_client, supabase
 from supabase_auth.errors import AuthApiError
@@ -77,6 +77,41 @@ async def login(request: LoginRequest):
         "token_type": "bearer",
         "user_id": response.user.id,
     }
+
+
+@router.post("/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    settings = get_settings()
+    # Build redirect URL pointing to the frontend so Supabase sends users back to our app
+    redirect_to = settings.cors_origins[0] if settings.cors_origins else "http://localhost:3000"
+    try:
+        auth_client = create_supabase_client()
+        auth_client.auth.reset_password_email(request.email, {"redirect_to": redirect_to})
+    except Exception:
+        pass  # Never reveal whether the email exists
+    return {"message": "If an account exists for that email, we've sent a password reset link."}
+
+
+@router.post("/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """Use the recovery access_token from the email link to set a new password."""
+    try:
+        # Verify the recovery token by getting the user it belongs to
+        auth_client = create_supabase_client()
+        user_response = auth_client.auth.get_user(request.access_token)
+        user = user_response.user
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid or expired reset link")
+        # Update password via admin API
+        supabase.auth.admin.update_user_by_id(
+            str(user.id), {"password": request.new_password}
+        )
+        write_audit("user.password_reset", str(user.id), "user", str(user.id))
+        return {"message": "Password updated successfully. You can now log in."}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired reset link. Please request a new one.")
 
 
 @router.get("/me")

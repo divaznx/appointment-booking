@@ -9,12 +9,34 @@ const els = {
   app: document.getElementById("app"),
   session: document.getElementById("session"),
   greeting: document.getElementById("greeting"),
-  email: document.getElementById("email"),
-  password: document.getElementById("password"),
   slots: document.getElementById("slots"),
   appointments: document.getElementById("appointments"),
   calendar: document.getElementById("calendar"),
+  /* Auth elements */
+  authTitle: document.getElementById("auth-title"),
+  authSubtitle: document.getElementById("auth-subtitle"),
+  authTabs: document.getElementById("auth-tabs"),
+  authMessage: document.getElementById("auth-message"),
+  loginForm: document.getElementById("login-form"),
+  signupForm: document.getElementById("signup-form"),
+  forgotForm: document.getElementById("forgot-form"),
+  loginEmail: document.getElementById("login-email"),
+  loginPassword: document.getElementById("login-password"),
+  loginBtn: document.getElementById("login-btn"),
+  signupEmail: document.getElementById("signup-email"),
+  signupPassword: document.getElementById("signup-password"),
+  signupConfirm: document.getElementById("signup-confirm"),
+  signupBtn: document.getElementById("signup-btn"),
+  forgotEmail: document.getElementById("forgot-email"),
+  forgotBtn: document.getElementById("forgot-btn"),
+  resetForm: document.getElementById("reset-form"),
+  resetPassword: document.getElementById("reset-password"),
+  resetConfirm: document.getElementById("reset-confirm"),
+  resetBtn: document.getElementById("reset-btn"),
 };
+
+/* Recovery token extracted from URL hash (Supabase redirects with #access_token=...&type=recovery) */
+let recoveryToken = null;
 
 /* ── SVG Icons ───────────────────────────────────────── */
 const ICONS = {
@@ -547,58 +569,391 @@ async function restoreSession() {
   }
 }
 
-/* ── Login / Signup ──────────────────────────────────── */
+/* ── Auth message helpers ────────────────────────────── */
+
+function showAuthMessage(message, type = "error") {
+  els.authMessage.textContent = message;
+  els.authMessage.className = `auth-message ${type}`;
+  els.authMessage.classList.remove("hidden");
+}
+
+function hideAuthMessage() {
+  els.authMessage.classList.add("hidden");
+  els.authMessage.className = "auth-message hidden";
+  els.authMessage.textContent = "";
+}
+
+function clearFieldErrors() {
+  document.querySelectorAll(".field-error").forEach((el) => (el.textContent = ""));
+  document.querySelectorAll(".input-error").forEach((el) => el.classList.remove("input-error"));
+}
+
+function setFieldError(inputId, message) {
+  const input = document.getElementById(inputId);
+  const errorEl = document.getElementById(`${inputId}-error`);
+  if (input) input.classList.add("input-error");
+  if (errorEl) errorEl.textContent = message;
+}
+
+/* ── Auth tab switching ─────────────────────────────── */
+
+function switchAuthTab(tab) {
+  hideAuthMessage();
+  clearFieldErrors();
+
+  // Toggle forms
+  els.loginForm.classList.toggle("hidden", tab !== "login");
+  els.signupForm.classList.toggle("hidden", tab !== "signup");
+  els.forgotForm.classList.toggle("hidden", tab !== "forgot");
+  els.resetForm.classList.toggle("hidden", tab !== "reset");
+
+  // Toggle tabs visibility (hide tabs on forgot/reset)
+  els.authTabs.classList.toggle("hidden", tab === "forgot" || tab === "reset");
+
+  // Update tab active states
+  els.authTabs.querySelectorAll(".auth-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+
+  // Update title & subtitle
+  const titles = {
+    login: ["Log in to your account", "Welcome back! Please enter your details."],
+    signup: ["Create your account", "Start booking appointments in minutes."],
+    forgot: ["Reset your password", "Enter your email and we\u2019ll send you a reset link."],
+    reset: ["Set new password", "Enter your new password below."],
+  };
+  const [title, subtitle] = titles[tab] || titles.login;
+  els.authTitle.textContent = title;
+  els.authSubtitle.textContent = subtitle;
+}
+
+/* ── Friendly error mapping ─────────────────────────── */
+
+function friendlyAuthError(message) {
+  const msg = (message || "").toLowerCase();
+  if (msg.includes("invalid login") || msg.includes("invalid email or password")) {
+    return "Invalid email or password.";
+  }
+  if (msg.includes("email not confirmed") || msg.includes("not confirmed")) {
+    return "Please verify your email before signing in.";
+  }
+  if (msg.includes("already registered") || msg.includes("already been registered")) {
+    return "An account with this email already exists.";
+  }
+  if (msg.includes("rate limit") || msg.includes("too many")) {
+    return "Too many attempts. Please try again later.";
+  }
+  if (msg.includes("weak password") || msg.includes("should be at least")) {
+    return "Password must be at least 8 characters.";
+  }
+  if (msg.includes("signup is disabled")) {
+    return "Sign up is currently disabled. Please contact support.";
+  }
+  return message || "Something went wrong. Please try again.";
+}
+
+/* ── Login ───────────────────────────────────────────── */
 
 async function login() {
-  const body = {
-    email: els.email.value.trim(),
-    password: els.password.value,
-  };
-  const data = await api("/login", {
-    method: "POST",
-    body: JSON.stringify(body),
-    auth: false,
-  });
-  setToken(data.access_token);
-  const me = await api("/me");
-  setSignedIn(me);
-  showBanner("Logged in.", true);
-  await refreshBoard();
+  const email = els.loginEmail.value.trim();
+  const password = els.loginPassword.value;
+
+  clearFieldErrors();
+  hideAuthMessage();
+
+  let valid = true;
+  if (!email) {
+    setFieldError("login-email", "Email is required.");
+    valid = false;
+  }
+  if (!password) {
+    setFieldError("login-password", "Password is required.");
+    valid = false;
+  }
+  if (!valid) return;
+
+  els.loginBtn.disabled = true;
+  els.loginBtn.textContent = "Signing in\u2026";
+
+  try {
+    const data = await api("/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      auth: false,
+    });
+    setToken(data.access_token);
+    const me = await api("/me");
+    setSignedIn(me);
+    showBanner("Logged in.", true);
+    await refreshBoard();
+  } catch (err) {
+    showAuthMessage(friendlyAuthError(err.message));
+  } finally {
+    els.loginBtn.disabled = false;
+    els.loginBtn.textContent = "Sign in";
+  }
+}
+
+/* ── Signup ──────────────────────────────────────────── */
+
+async function signup() {
+  const email = els.signupEmail.value.trim();
+  const password = els.signupPassword.value;
+  const confirm = els.signupConfirm.value;
+
+  clearFieldErrors();
+  hideAuthMessage();
+
+  let valid = true;
+  if (!email) {
+    setFieldError("signup-email", "Email is required.");
+    valid = false;
+  }
+  if (!password) {
+    setFieldError("signup-password", "Password is required.");
+    valid = false;
+  } else if (password.length < 8) {
+    setFieldError("signup-password", "Password must be at least 8 characters.");
+    valid = false;
+  }
+  if (!confirm) {
+    setFieldError("signup-confirm", "Please confirm your password.");
+    valid = false;
+  } else if (password && confirm !== password) {
+    setFieldError("signup-confirm", "Passwords do not match.");
+    valid = false;
+  }
+  if (!valid) return;
+
+  els.signupBtn.disabled = true;
+  els.signupBtn.textContent = "Creating account\u2026";
+
+  try {
+    const data = await api("/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      auth: false,
+    });
+
+    if (data.email_confirmation_required) {
+      showAuthMessage(
+        "Account created! We\u2019ve sent a verification email to " + email + ". Please verify your email before signing in.",
+        "success"
+      );
+      // Reset the signup form and switch to login tab after a moment
+      els.signupForm.reset();
+      setTimeout(() => switchAuthTab("login"), 100);
+      // Re-show the success message since tab switch clears it
+      setTimeout(() => {
+        showAuthMessage(
+          "Account created! We\u2019ve sent a verification email to " + email + ". Please verify your email before signing in.",
+          "success"
+        );
+      }, 150);
+      return;
+    }
+
+    // Auto-confirm is on: log the user in immediately
+    els.signupBtn.textContent = "Signing in\u2026";
+    els.loginEmail.value = email;
+    els.loginPassword.value = password;
+    await login();
+  } catch (err) {
+    showAuthMessage(friendlyAuthError(err.message));
+  } finally {
+    els.signupBtn.disabled = false;
+    els.signupBtn.textContent = "Create account";
+  }
+}
+
+/* ── Forgot password ────────────────────────────────── */
+
+async function forgotPassword() {
+  const email = els.forgotEmail.value.trim();
+
+  clearFieldErrors();
+  hideAuthMessage();
+
+  if (!email) {
+    setFieldError("forgot-email", "Email is required.");
+    return;
+  }
+
+  els.forgotBtn.disabled = true;
+  els.forgotBtn.textContent = "Sending\u2026";
+
+  try {
+    await api("/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: false,
+    });
+    showAuthMessage(
+      "If an account exists for that email, we\u2019ve sent a password reset link. Check your inbox.",
+      "success"
+    );
+  } catch (err) {
+    // Always show success to not leak info about accounts
+    showAuthMessage(
+      "If an account exists for that email, we\u2019ve sent a password reset link. Check your inbox.",
+      "success"
+    );
+  } finally {
+    els.forgotBtn.disabled = false;
+    els.forgotBtn.textContent = "Send reset link";
+  }
+}
+
+/* ── Reset password (from email link) ────────────────── */
+
+async function resetPassword() {
+  const password = els.resetPassword.value;
+  const confirm = els.resetConfirm.value;
+
+  clearFieldErrors();
+  hideAuthMessage();
+
+  let valid = true;
+  if (!password) {
+    setFieldError("reset-password", "Password is required.");
+    valid = false;
+  } else if (password.length < 8) {
+    setFieldError("reset-password", "Password must be at least 8 characters.");
+    valid = false;
+  }
+  if (!confirm) {
+    setFieldError("reset-confirm", "Please confirm your password.");
+    valid = false;
+  } else if (password && confirm !== password) {
+    setFieldError("reset-confirm", "Passwords do not match.");
+    valid = false;
+  }
+  if (!valid) return;
+
+  if (!recoveryToken) {
+    showAuthMessage("Invalid or expired reset link. Please request a new one.");
+    return;
+  }
+
+  els.resetBtn.disabled = true;
+  els.resetBtn.textContent = "Updating\u2026";
+
+  try {
+    await api("/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ access_token: recoveryToken, new_password: password }),
+      auth: false,
+    });
+    recoveryToken = null;
+    // Clear the hash from the URL
+    history.replaceState(null, "", window.location.pathname);
+    showAuthMessage("Password updated successfully! You can now log in with your new password.", "success");
+    els.resetForm.reset();
+    setTimeout(() => switchAuthTab("login"), 100);
+    setTimeout(() => {
+      showAuthMessage("Password updated successfully! You can now log in with your new password.", "success");
+    }, 150);
+  } catch (err) {
+    showAuthMessage(friendlyAuthError(err.message));
+  } finally {
+    els.resetBtn.disabled = false;
+    els.resetBtn.textContent = "Set new password";
+  }
+}
+
+/* ── Recovery token detection ────────────────────────── */
+
+function checkRecoveryToken() {
+  const hash = window.location.hash;
+  if (!hash) return false;
+
+  // Parse hash fragment: #access_token=...&type=recovery&...
+  const params = new URLSearchParams(hash.substring(1));
+  const accessToken = params.get("access_token");
+  const type = params.get("type");
+
+  if (accessToken && type === "recovery") {
+    recoveryToken = accessToken;
+    switchAuthTab("reset");
+    return true;
+  }
+  return false;
 }
 
 /* ── Event listeners ─────────────────────────────────── */
 
-document.getElementById("auth-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  showBanner("");
-  try {
-    await login();
-  } catch (err) {
-    showBanner(err.message);
-  }
+// Auth tab clicks
+els.authTabs.addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-tab]");
+  if (tab) switchAuthTab(tab.dataset.tab);
 });
 
-document.getElementById("signup").addEventListener("click", async () => {
-  showBanner("");
-  try {
-    const data = await api("/signup", {
-      method: "POST",
-      body: JSON.stringify({
-        email: els.email.value.trim(),
-        password: els.password.value,
-      }),
-      auth: false,
-    });
-    if (data.email_confirmation_required) {
-      showBanner("Account created. Confirm your email, then log in.", true);
-      return;
-    }
-    await login();
-  } catch (err) {
-    showBanner(err.message);
-  }
+// Login form submit
+els.loginForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  login();
 });
 
+// Signup form submit
+els.signupForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  signup();
+});
+
+// Forgot password form submit
+els.forgotForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  forgotPassword();
+});
+
+// Link: switch to signup
+document.getElementById("switch-to-signup").addEventListener("click", (e) => {
+  e.preventDefault();
+  switchAuthTab("signup");
+});
+
+// Link: switch to login
+document.getElementById("switch-to-login").addEventListener("click", (e) => {
+  e.preventDefault();
+  switchAuthTab("login");
+});
+
+// Link: forgot password
+document.getElementById("forgot-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  switchAuthTab("forgot");
+});
+
+// Link: back to login from forgot
+document.getElementById("back-to-login").addEventListener("click", (e) => {
+  e.preventDefault();
+  switchAuthTab("login");
+});
+
+// Link: back to login from reset
+document.getElementById("reset-back-to-login").addEventListener("click", (e) => {
+  e.preventDefault();
+  recoveryToken = null;
+  history.replaceState(null, "", window.location.pathname);
+  switchAuthTab("login");
+});
+
+// Reset password form submit
+els.resetForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  resetPassword();
+});
+
+// Clear field errors on input
+document.querySelectorAll(".auth-input-group input").forEach((input) => {
+  input.addEventListener("input", () => {
+    input.classList.remove("input-error");
+    const errorEl = document.getElementById(`${input.id}-error`);
+    if (errorEl) errorEl.textContent = "";
+  });
+});
+
+// Logout
 document.getElementById("logout").addEventListener("click", () => {
   setSignedOut();
   showBanner("Logged out.", true);
@@ -620,6 +975,12 @@ document.getElementById("refresh-appts").addEventListener("click", async () => {
   }
 });
 
-/* ── Init ────────────────────────────────────────────── */
+// Listen for hash changes in case recovery link is loaded or pasted in an open tab
+window.addEventListener("hashchange", () => {
+  checkRecoveryToken();
+});
 
-restoreSession();
+// Check for password recovery token in URL before restoring session
+if (!checkRecoveryToken()) {
+  restoreSession();
+}
