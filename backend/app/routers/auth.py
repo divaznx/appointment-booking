@@ -35,6 +35,15 @@ async def signup(request: SignUpRequest):
     except AuthApiError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Supabase returns a fake user with empty identities when the email is
+    # already registered (to prevent account enumeration).  Detect this and
+    # return a clear error instead of falsely reporting "Account created".
+    if response.user and not getattr(response.user, "identities", None):
+        raise HTTPException(
+            status_code=409,
+            detail="An account with this email already exists.",
+        )
+
     if settings.auto_confirm_email and response.user:
         supabase.auth.admin.update_user_by_id(
             str(response.user.id),
